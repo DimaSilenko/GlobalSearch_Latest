@@ -1,0 +1,16 @@
+Dimension = 2
+Epsilon = 0.010000
+Function_number = 1
+Task_number = 45
+Optimal x[0] = 0.042100 
+Optimal x[1] = 0.563607 
+min = -8.889056
+
+
+AGP:
+r = 3.600000
+Iteration AGP = 57
+Solve time AGP = 0.004000
+Try to do AGP: Function = -8.888296 X = (0.041504, 0.562988)
+Accuracy Function AGP = 0.000760, Accuracy X AGP = (0.000596, 0.000619)
+AGP found Global optimum!

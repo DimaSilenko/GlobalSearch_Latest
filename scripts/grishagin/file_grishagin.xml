@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<config>
+  <function_number>100</function_number>
+  <dimension>2</dimension>
+  <epsilon>0.01</epsilon>
+  <r>3.6</r>
+</config>
