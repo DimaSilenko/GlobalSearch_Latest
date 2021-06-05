@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <config>
-  <function_number>22</function_number>
+  <function_number>99</function_number>
   <dimension>2</dimension>
   <global_dist>0.9</global_dist>
   <global_radius>0.2</global_radius>

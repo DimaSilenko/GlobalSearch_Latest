@@ -4,7 +4,6 @@
 #include "evolvent.h"
 #include "problem_manager.h"
 #include "extended.h"
-#include "mpi.h"
 #include "pugixml.hpp"
 #include "isolinesPlotter.h"
 
@@ -36,11 +35,6 @@ int  main(int argc, char* argv[])
 
   int dimension = 0;
   IProblem* problem;
-
-  //Инициализация mpi
-  MPI_Init(&argc, &argv);
-  int rankM;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rankM);
 
   /// Известная точка глобального минимума
   double* BestTrialy;
@@ -96,14 +90,13 @@ int  main(int argc, char* argv[])
     r = std::stod(config.child("r").child_value());
     //Выцепляем номер задачи
     int funcNumber = std::stoi(config.child("function_number").child_value());
-    printf("Function_number = %d\n", problem->GetNumberOfFunctions());
+    printf("Function_count = %d\n", problem->GetNumberOfFunctions());
+    printf("Function_number = %d\n", funcNumber);
     ////Для GKLS-----------------------------------------------------------------------------------------------
     double global_dist = std::stod(config.child("global_dist").child_value());
     double global_radius = std::stod(config.child("global_radius").child_value());
     int numMinuma = std::stoi(config.child("num_minima").child_value());
 
-
-    printf("Task_number = %d\n", funcNumber);
     printf("global_dist = %lf\n", global_dist);
     printf("global_radius = %lf\n", global_radius);
     printf("numMinuma = %d\n\n", numMinuma);
@@ -122,8 +115,7 @@ int  main(int argc, char* argv[])
       points = new double*[maxTrial * 2];
     }
 
-    if (rankM == 0)
-    {
+    
 
       //if (Extended::GetPrecision() == 0.01)
       //{
@@ -137,7 +129,7 @@ int  main(int argc, char* argv[])
 
 
       /////////////////////
-      ///Вычисоения
+      ///Вычисления
       ////////////////////
 
       minx[0] = 0.5;
@@ -273,46 +265,27 @@ int  main(int argc, char* argv[])
 
 
       }
-    }
   }
  
-  MPI_Barrier(MPI_COMM_WORLD);
   int iter = 1000000;
 
   double* bestX = new double[dimension];
-  double start_time = MPI_Wtime();
-  double per = 0;// Perebor(iter, dimension, problem, &bestX);
-  double end_time = MPI_Wtime();
 
   double By = problem->CalculateFunctionals(BestTrialy, 0);
   printf("min = %lf\n", By);
 
-  if (rankM == 0) 
-  {
-    //Перебор нам пока не нужен больше
-    /*printf("\nPerebor:\n");
-
-    double seconds = end_time - start_time;
-    printf("Iteration Perebor = %d\n", iter);
-    printf("Solve time Perebor = %lf\n", seconds);
-    printf("Try to do perebor: Function = %lf X = (%lf, %lf)\n", per, bestX[0], bestX[1]);
-    printf("Accuracy Function Perebor = %lf, Accuracy X Perebor = (%lf, %lf)\n", (abs(per - By)),
-      (abs(bestX[0] - BestTrialy[0])), (abs(bestX[1] - BestTrialy[1])));
-
-    bool answer = ((abs(bestX[0] - BestTrialy[0]) < eps) && (abs(bestX[1] - BestTrialy[1]) < eps));
-    if (answer)
-      printf("Perebor found Global optimum!\n");
-    else
-      printf("Something went wrong with Perebor!!\n");*/
 
     int iteration = 0;
     printf("\n\nAGP:\n");
     printf("r = %lf\n", r);
-    int numThr = 4;
+    //Параметры запуска: количество потоков и необходиомость рисовать
+    int numThr = 1;
+    bool needDrawing = false;
+
     int flag = 1;
+
     clock_t start = clock();
-    //double agp = AGP_Space(iter, eps, dimension, problem, &bestX, &iteration, r, BestTrialy, flag, argv);
-    double agp = AGP_Space_OMP(iter, eps, dimension, problem, &bestX, &iteration, r, BestTrialy, numThr, flag, argv);
+    double agp = AGP_Space_OMP(iter, eps, dimension, problem, &bestX, &iteration, r, BestTrialy, numThr, flag, argv, needDrawing);
     clock_t end = clock();
     
     double seconds = (double)(end - start) / CLOCKS_PER_SEC;
@@ -330,10 +303,9 @@ int  main(int argc, char* argv[])
       printf("Something went wrong with AGP!!\n");
 
     //Визуализация всего, что наделал АГП, чтобы понять что не так
-    /*plot2dProblemIsolines(problem, "D:\\GlobalSearch\\Test\\GlobalSearch_a1\\points.png",
-      "D:\\GlobalSearch\\Test\\GlobalSearch_a1\\points.txt", false, 0);*/
-  }
-  MPI_Finalize();
+    /*if (needDrawing)
+      plot2dProblemIsolines(problem, "D:\\GlobalSearch\\Test\\GlobalSearch_a1\\points.png",
+        "D:\\GlobalSearch\\Test\\GlobalSearch_a1\\points.txt", false, 0);*/
 
   return 0;
 }

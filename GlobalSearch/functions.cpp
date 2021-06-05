@@ -261,160 +261,6 @@ void Interval::Heapify(int i)
 }
 //----------------------Конец описания класса--------------------------------------------------
 
-double Perebor(int maxTrial, int demension, IProblem* problem, double* *bestX)
-{
-  int size;
-  int rank;
-  int delta;
-  int ost;
-  MPI_Comm_size(MPI_COMM_WORLD, &size);
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
-  double min, sum;
-
-  double* lower_bounds = new double[demension];
-  double* upper_bounds = new double[demension];
-  problem->GetBounds(lower_bounds, upper_bounds);
-  double* shag = new double[demension];
-  for (int i =0; i < demension; i++)
-    shag[i] = lower_bounds[i];
-  double** masX = new double*[maxTrial + 1];
-  for (int i = 0; i < maxTrial + 1; i++)
-    masX[i] = new double[demension];
-  for (int i = 0; i < demension; i++)
-    masX[0][i] = shag[i];
-
-  //Подсчитаем координаты X у точек, в которых потом будем считать значение функции
-  for (int i = 1; i < maxTrial + 1; i++)
-  {
-    for (int j = 0; j < demension; j++) {
-      if (shag[j] >= upper_bounds[j] + 0.1)
-        break;
-      shag[j] += (upper_bounds[j] - lower_bounds[j]) / (maxTrial + 1);
-      masX[i][j] = shag[j];
-    }
-  }
-
-  int flag = 0;
-  int tmpsize = 0;
-  ost = (maxTrial + 1) % size;
-  if ((maxTrial + 1) <= size)
-  {
-    tmpsize = size;
-    size = 1;
-    ost = 0;
-    flag = -1;
-  }
-
-  delta = (maxTrial + 1) / size;
-
-  double prom_min = 0;
-  if (rank == 0)
-  {
-    double* tmp = new double[demension];
-
-    for (int i = 0; i < delta + ost; i++)
-    {
-      if (demension == 2) {
-        tmp[0] = masX[i][0];
-        for (int j = 0; j < delta + ost; j++) {
-          tmp[1] = masX[j][1];
-
-          sum = problem->CalculateFunctionals(tmp, 0);
-
-          if ((j == 0)&&(i==0)) {
-            prom_min = sum;
-            (*bestX)[0] = tmp[0];
-            (*bestX)[1] = tmp[1];
-          }
-          else
-            if (sum < prom_min) {
-              prom_min = sum;
-              (*bestX)[0] = tmp[0];
-              (*bestX)[1] = tmp[1];
-            }
-        }
-      }
-      if (demension == 1) {
-        for (int j = 0; j < demension; j++)
-          tmp[j] = masX[i][j];
-        sum = problem->CalculateFunctionals(tmp, 0);
-
-        if (i == 0) {
-          prom_min = sum;
-          (*bestX)[0] = tmp[0];
-        }
-        else
-          if (sum < prom_min) {
-            prom_min = sum;
-            (*bestX)[0] = tmp[0];
-          }
-      }
-    }
-    min = prom_min;
-    //delete[] tmp;
-  }
-  //else
-  //{
-  //  if (flag == 0)
-  //  {
-  //    double* tmp = new double[demension];
-  //    for (int i = delta*rank + ost; i < delta* rank + ost + delta; i++)
-  //    {
-  //      if (demension == 2) {
-  //        tmp[0] = masX[i][0];
-  //        for (int j = delta * rank + ost; j < delta* rank + ost + delta; j++) {
-  //          tmp[1] = masX[j][1];
-
-  //          sum = problem->CalculateFunctionals(tmp, 0);
-
-  //          if (i == delta * rank + ost) {
-  //            prom_min = sum;
-  //          }
-  //          else
-  //            if (sum < prom_min)
-  //              prom_min = sum;
-  //        }
-  //      }
-  //      if (demension == 1) {
-  //        for (int j = 0; j < demension; j++)
-  //          tmp[j] = masX[i][j];
-  //        sum = problem->CalculateFunctionals(tmp, 0);
-
-  //        if (i == 0) {
-  //          prom_min = sum;
-  //        }
-  //        else
-  //          if (sum < prom_min)
-  //            prom_min = sum;
-  //      }
-  //    }
-  //    //delete[] tmp;
-  //  }
-  //}
-
-  if (flag == 0)
-  {
-    MPI_Reduce(&prom_min, &min, 1, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
-  }
-  else
-  {
-    if (rank == 0)
-    {
-      return prom_min;
-    }
-    else
-    {
-      return -1;
-    }
-  }
-  
-  delete[] masX;
-  delete[] lower_bounds;
-  delete[] upper_bounds;
-  return min;
-}
-
 void QuickSort(double* mas, int first, int last)
 {
   double count;
@@ -593,231 +439,10 @@ double AGP(int maxTrial, double accuracy, int demension, IProblem* problem)
   return min;
 }
 
-
-// Для многомерного случая------------------------------------------------------------
-double AGP_Space(int maxTrial, double accuracy, int demension, IProblem* problem, double* *BestX, int *iteration, double r, double* Truemin, int flag, char* argv[])
-{
-  double N = 1.0 / demension;
-
-  double* lower_bounds = new double[demension];
-  double* upper_bounds = new double[demension];
-  problem->GetBounds(lower_bounds, upper_bounds);
-
-  //Многомерная точка
-  double** X = new double*[maxTrial];
-  for (int i = 0; i < maxTrial; i++)
-  {
-    X[i] = new double[demension];
-    for (int j = 0; j < demension; j++)
-      X[i][j] = 0;
-  }
-
-  double z_l, z_r, z;
-
-  Interval inter(maxTrial);
-
-  //Нам надо вычислить значение на левой гарнице и сжать в отрезок [0; 1] и то же самое с правой границей
-  double zip_x_l = 0;
-  double zip_x_r = 1;
-  double zip_x = 0;
-
-  //Для подсчета минимума
-  double min;
-  GetImage(zip_x_l, X[0], lower_bounds, upper_bounds, demension, 10);
-  min = problem->CalculateFunctionals(X[0], 0);
-  z_l = min;
-
-  for (int i = 0; i < demension; i++)
-    (*BestX)[i] = X[0][i];
-
-  GetImage(zip_x_r, X[0], lower_bounds, upper_bounds, demension, 10);
-  z_r = problem->CalculateFunctionals(X[0], 0);
-
-  if (z_r < min)
-  {
-    min = z_r;
-    for (int i = 0; i < demension; i++)
-      (*BestX)[i] = X[0][i];
-  }
-
-  double prom_min;
-
-  double M = 1;
-
-  // Флаг на обновление M
-  int f = 0;
-
-  double delta;
-  double second;
-  double third;
-  double R = DBL_MIN;
-  double p;
-
-  ////Открываем файл для записи-------------------------------------------------------------------
-  //std::string pointLogName = argv[3];
-  //FILE* pointLog = fopen(pointLogName.c_str(), "w");
-  ////--------------------------------------------------------------------------------------------
-
-  for (int i = 0; i < maxTrial; i++)
-  {
-    /*inter.sort_out();
-    cout << "-------------------------------------\n";*/
-    if (inter.GetSize() != 0)
-    {
-      zip_x_l = inter.GetMaxPointLeft();
-      zip_x_r = inter.GetMaxPointRight();
-      z_l = inter.GetMaxZLeft();
-      z_r = inter.GetMaxZRight();
-    }
-
-    if (zip_x_l != 0 && zip_x_r != 1) {
-      second = (zip_x_r + zip_x_l) / 2;
-      p = pow((fabs(z_r - z_l) / M), demension);
-      third = p / 2 / r;
-      zip_x = second - sng(z_r - z_l) * third;
-    }
-    else
-      zip_x = (zip_x_r + zip_x_l) / 2;
-
-
-    GetImage(zip_x, X[i], lower_bounds, upper_bounds, demension, 10);
-    prom_min = problem->CalculateFunctionals(X[i], 0);
-    z = prom_min;
-    if (prom_min < min) {
-      min = prom_min;
-      for (int kk = 0; kk < demension; kk++)
-        (*BestX)[kk] = X[i][kk];
-    }
-    (*iteration)++;
-
-    if ((zip_x >= zip_x_r) || (zip_x <= zip_x_l))
-      std::cout << "ERROR!!!!!!!\n";
-
-    if (flag == 0) {
-      p = pow(fabs(zip_x - zip_x_r), N);
-      if (p < accuracy)
-        break;
-      p = pow(fabs(zip_x - zip_x_l), N);
-      if (p < accuracy)
-        break;
-    }
-    else {
-      /*double maxfabs = fabs(Truemin[0] - (*BestX)[0]);
-      if (fabs(Truemin[1] - (*BestX)[1]) > maxfabs)
-        maxfabs = fabs(Truemin[1] - (*BestX)[1]);
-      cout << i << "; " << maxfabs << "\n";*/
-      int br = 0;
-      for (int kk = 0; kk < demension; kk++)
-        if (fabs(Truemin[kk] - (*BestX)[kk]) < accuracy)
-          br++;
-      if (br == demension)
-        break;
-    }
-
-    //вычислить оценку M для неизвестной константы Липшеца
-    double m = 1;
-    p = pow(fabs(zip_x - zip_x_r), N);
-    m = fabs(z - z_r) / p;
-    if (m > M)
-    {
-      M = m;
-      f = 1;
-    }
-    p = pow(fabs(zip_x - zip_x_l), N);
-    m = fabs(z - z_l) / p;
-    if (m > M)
-    {
-      M = m;
-      f = 1;
-    }
-
-    if (i == 0) {
-      M = 1;
-      f = 1;
-    }
-
-    //Вычислим характеристику R(i)
-    R = DBL_MIN;
-
-    if (inter.GetSize() != 0)
-    {
-      inter.GetMax();
-      //cout << "After:\n";
-      //inter.out();
-      //cout << "-------------------------------------\n\n";
-    }
-
-    if (zip_x_l == 0)
-    {
-      delta = pow((zip_x - zip_x_l), N);
-      R = 2 * delta - 4 * (z - min) / (r*M);
-    }
-    else
-    {
-      delta = pow((zip_x - zip_x_l), N);
-      second = (z - z_l)*(z - z_l) / (r*r*M*M*delta);
-      third = 2 * (z + z_l - 2 * min) / (r*M);
-      R = delta + second - third;
-    }
-
-    inter.AddElem(R, zip_x_l, zip_x, z_l, z);
-
-    //-----------------------------------------------
-    R = DBL_MIN;
-
-    if (zip_x_r == 1)
-    {
-      delta = pow((zip_x_r - zip_x), N);
-      R = 2 * delta - 4 * (z - min) / (r*M);
-    }
-    else
-    {
-      delta = pow((zip_x_r - zip_x), N);
-      second = (z_r - z)*(z_r - z) / (r*r*M*M*delta);
-      third = 2 * (z_r + z - 2 * min) / (r*M);
-      R = delta + second - third;
-    }
-
-    inter.AddElem(R, zip_x, zip_x_r, z, z_r);
-
-    if (f == 1)
-    {
-      inter.Update(M, r, demension, min);
-      f = 0;
-    }
-
-  }
-
-  ////------------------------------------------------------------------------------------------
-  //fprintf(pointLog, "%d\n", (*iteration));
-  ////Записываем в файл точки----------------------------------------------------------------------------------
-  //for (int i = 1; i < (*iteration); i++)
-  //{
-  //  for (int j = 0; j < demension; j++)
-  //    fprintf(pointLog, "%lf ", X[i][j]);
-  //  fprintf(pointLog, "\n");
-  //}
-  ////---------------------------------------------------------------------------------------------------------------
-
-  ///// Печатаем найденную точку
-  //for (int j = 0; j < demension; j++)
-  //  fprintf(pointLog, "%lf ", (*BestX)[j]);
-  //fprintf(pointLog, "\n");
-
-  ///// Известная точка глобального минимума
-  //for (int j = 0; j < demension; j++)
-  //  fprintf(pointLog, "%lf ", Truemin[j]);
-  //fclose(pointLog);
-  ////------------------------------------------------------------------------------------------
-
-  delete[] lower_bounds;
-  delete[] upper_bounds;
-
-  return min;
-}
-
 // Для многомерного параллельного случая------------------------------------------------------------
-double AGP_Space_OMP(int maxTrial, double accuracy, int demension, IProblem* problem, double* *BestX, int *iteration, double r, double* Truemin, int NumThr, int flag, char* argv[])
+double AGP_Space_OMP(int maxTrial, double accuracy, int demension,
+  IProblem* problem, double* *BestX, int *iteration, double r,
+  double* Truemin, int NumThr, int flag, char* argv[], bool needDrawing)
 {
   double N = 1.0 / demension;
 
@@ -834,20 +459,23 @@ double AGP_Space_OMP(int maxTrial, double accuracy, int demension, IProblem* pro
       X[i][j] = 0;
   }
 
-  ////=======================================================================================================================================================
-  //Точка для рисования
-  //int keyDraw = 0;
-  //double** pointDraw = new double*[NumThr * maxTrial];
-  //for (int i = 0; i < NumThr * maxTrial; i++)
-  //{
-  //  pointDraw[i] = new double[demension];
-  //  for (int j = 0; j < demension; j++)
-  //    pointDraw[i][j] = 0;
-  //}
-  ////Открываем файл для записи-------------------------------------------------------------------
-  //std::string pointLogName = argv[3];
-  //FILE* pointLog = fopen(pointLogName.c_str(), "w");
-  ////=======================================================================================================================================================
+  int keyDraw = 0;
+  double** pointDraw;
+  FILE* pointLog;
+  if (needDrawing) {
+    //Точка для рисования
+    pointDraw = new double*[NumThr * maxTrial];
+    for (int i = 0; i < NumThr * maxTrial; i++)
+    {
+      pointDraw[i] = new double[demension];
+      for (int j = 0; j < demension; j++)
+        pointDraw[i][j] = 0;
+    }
+    //Открываем файл для записи-------------------------------------------------------------------
+    std::string pointLogName = argv[3];
+    pointLog = fopen(pointLogName.c_str(), "w");
+   
+  }
 
   double* z_l = new double[NumThr];
   double* z_r = new double[NumThr];
@@ -883,22 +511,12 @@ double AGP_Space_OMP(int maxTrial, double accuracy, int demension, IProblem* pro
   for (int i = 0; i < demension; i++)
   {
     (*BestX)[i] = X[0][i];
-    //pointDraw[0][i] = X[0][i];
+    if (needDrawing)
+      pointDraw[0][i] = X[0][i];
   }
 
   GetImage(zip_x_r[0], X[0], lower_bounds, upper_bounds, demension, 10);
   z_r[0] = problem->CalculateFunctionals(X[0], 0);
-
-  //Возможно, это не нужно, я не уверен
-  //if (z_r[0] < min)
-  //{
-  //  min = z_r[0];
-  //  for (int i = 0; i < demension; i++)
-  //  {
-  //    (*BestX)[i] = X[0][i];
-  //    //pointDraw[0][i] = X[0][i];
-  //  }
-  //}
 
   double M = 1;
   
@@ -931,7 +549,8 @@ double AGP_Space_OMP(int maxTrial, double accuracy, int demension, IProblem* pro
       for (int kk = 0; kk < demension; kk++)
       {
         (*BestX)[kk] = X[0][kk];
-        //pointDraw[i][kk] = X[0][kk];
+        if (needDrawing)
+          pointDraw[i][kk] = X[0][kk];
       }
     }
   }
@@ -947,15 +566,6 @@ double AGP_Space_OMP(int maxTrial, double accuracy, int demension, IProblem* pro
 
       inter.GetMax();
     }
-
-    /*if (zip_x_l[0] != 0 && zip_x_r[0] != 1) {
-      second = (zip_x_r[0] + zip_x_l[0]) / 2;
-      p = pow((fabs(z_r[0] - z_l[0]) / M), demension);
-      third = p / 2 / r;
-      zip_x[0] = second - sng(z_r[0] - z_l[0]) * third;
-    }
-    else
-      zip_x[0] = (zip_x_r[0] + zip_x_l[0]) / 2;*/
 
     ///Здесь ставим точки просто с определенным шагом
     double h = 1.0 / (NumThr + 1);
@@ -980,10 +590,6 @@ double AGP_Space_OMP(int maxTrial, double accuracy, int demension, IProblem* pro
         return min;
     }
     else {
-      //double maxfabs = fabs(Truemin[0] - (*BestX)[0]);
-      //if (fabs(Truemin[1] - (*BestX)[1]) > maxfabs)
-      //  maxfabs = fabs(Truemin[1] - (*BestX)[1]);
-      //cout << i << "; " << maxfabs << "\n";
 
       int br = 0;
       for (int kk = 0; kk < demension; kk++)
@@ -1015,8 +621,6 @@ double AGP_Space_OMP(int maxTrial, double accuracy, int demension, IProblem* pro
       M = 1;
       f = 1;
     }
-
-    ////////////////////////////////////////cout << "M = " << M << "\n";
 
     //Вычислим характеристику R(i)
     R[0].first = DBL_MIN;
@@ -1062,7 +666,8 @@ double AGP_Space_OMP(int maxTrial, double accuracy, int demension, IProblem* pro
     }
   }   
 
-  //keyDraw = NumThr - 1;
+  if (needDrawing)
+   keyDraw = NumThr - 1;
 
   //Цикл внутри которого уже будем параллелить пытаться
   for (int i = NumThr; i < maxTrial; i++)
@@ -1081,7 +686,7 @@ double AGP_Space_OMP(int maxTrial, double accuracy, int demension, IProblem* pro
         inter.GetMax();
       }
 
-//#pragma omp parallel for private(paral, second, p, third) num_threads(NumThr)
+#pragma omp parallel for private(paral, second, p, third) num_threads(NumThr)
     for (paral = 0; paral < NumThr; paral++)
     {
       if (zip_x_l[paral] != 0 && zip_x_r[paral] != 1) {
@@ -1102,9 +707,11 @@ double AGP_Space_OMP(int maxTrial, double accuracy, int demension, IProblem* pro
 
     for (int j = 0; j < NumThr; j++)
     {
-     // for (int kk = 0; kk < demension; kk++)
-        //pointDraw[keyDraw][kk] = X[j][kk];
-      //keyDraw++;
+      if (needDrawing) {
+        for (int kk = 0; kk < demension; kk++)
+           pointDraw[keyDraw][kk] = X[j][kk];
+         keyDraw++;
+      }
       if (prom_min[j] < min) {
         min = prom_min[j];
         for (int kk = 0; kk < demension; kk++)
@@ -1113,14 +720,10 @@ double AGP_Space_OMP(int maxTrial, double accuracy, int demension, IProblem* pro
         }
       }
     }
-    /*double maxfabs = fabs(Truemin[0] - (*BestX)[0]);
-    if (fabs(Truemin[1] - (*BestX)[1]) > maxfabs)
-      maxfabs = fabs(Truemin[1] - (*BestX)[1]);
-    cout << i << "; " << maxfabs << "\n";*/
 
     (*iteration)++;
 
-//#pragma omp parallel for shared(test, M, f) private(paral, second, p, third, delta) num_threads(NumThr)
+#pragma omp parallel for shared(test, M, f) private(paral, second, p, third, delta) num_threads(NumThr)
     for (paral = 0; paral < NumThr; paral++)
     {
       if ((zip_x[paral] >= zip_x_r[paral]) || (zip_x[paral] <= zip_x_l[paral]))
@@ -1195,46 +798,7 @@ double AGP_Space_OMP(int maxTrial, double accuracy, int demension, IProblem* pro
         }
       }
     }
-
-    //тестовый вывод
-    /*double* testR = new double[inter.GetSize()];
-    double* test_zip_x_l = new double[inter.GetSize()];
-    double* test_zip_x_r = new double[inter.GetSize()];
-    double* test_z_l = new double[inter.GetSize()];
-    double* test_z_r = new double[inter.GetSize()];
-    int size = inter.GetSize();
-    for (int ii = 0; ii < size; ii++)
-    {
-      test_zip_x_l[ii] = inter.GetMaxPointLeft();
-      cout << "zip_x_l = " << test_zip_x_l[ii] << "\t";
-      test_zip_x_r[ii] = inter.GetMaxPointRight();
-      cout << "zip_x_r = " << test_zip_x_r[ii] << "\t";
-      test_z_l[ii] = inter.GetMaxZLeft();
-      cout << "z_l = " << test_z_l[ii] << "\t";
-      test_z_r[ii] = inter.GetMaxZRight();
-      cout << "z_r = " << test_z_r[ii] << "\t";
-      testR[ii] = inter.GetMax();
-      cout << "R = " << testR[ii] << "\t";
-
-      p = pow(fabs(test_zip_x_r[ii] - test_zip_x_l[ii]), N);
-      double m = fabs(test_z_r[ii] - test_z_l[ii]) / p;
-      cout << "m = " << m << "\n";
-    }
-    for (int ii = 0; ii < size; ii++)
-    {
-      for (int ii2 = 0; ii2 < size; ii2++)
-      {
-        if ((test_zip_x_l[ii] > test_zip_x_l[ii2]) && (test_zip_x_l[ii] < test_zip_x_r[ii2]))
-          cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";
-        if ((test_zip_x_r[ii] > test_zip_x_l[ii2]) && (test_zip_x_r[ii] < test_zip_x_r[ii2]))
-          cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";
-      }
-      inter.AddElem(testR[ii], test_zip_x_l[ii], test_zip_x_r[ii], test_z_l[ii], test_z_r[ii]);
-    }
-    cout << "\n";*/
-
-    /////////////////////////////////////////////////////////////////////////////////////cout << "M = " << M << "\n";
-
+    
     //Заносим все новые интервалы в кучу и при надобности обновляем
     for (int j = 0; j < NumThr; j++)
     {
@@ -1249,27 +813,28 @@ double AGP_Space_OMP(int maxTrial, double accuracy, int demension, IProblem* pro
   }
 
 
-  ////=======================================================================================================================================================
-  //fprintf(pointLog, "%d\n", keyDraw);
-  //////Записываем в файл точки----------------------------------------------------------------------------------
-  //for (int i = 1; i < keyDraw; i++)
-  //{
-  //  for (int j = 0; j < demension; j++)
-  //    fprintf(pointLog, "%lf ", pointDraw[i][j]);
-  //  fprintf(pointLog, "\n");
-  //}
-  ////---------------------------------------------------------------------------------------------------------------
+  if (needDrawing) {
+    fprintf(pointLog, "%d\n", keyDraw);
+    //Записываем в файл точки----------------------------------------------------------------------------------
+    for (int i = 1; i < keyDraw; i++)
+    {
+      for (int j = 0; j < demension; j++)
+        fprintf(pointLog, "%lf ", pointDraw[i][j]);
+      fprintf(pointLog, "\n");
+    }
+    //----------------------------------------------------------------------------------------------------------
 
-  /// Печатаем найденную точку
-  /*for (int j = 0; j < demension; j++)
-    fprintf(pointLog, "%lf ", (*BestX)[j]);
-  fprintf(pointLog, "\n");
+    /// Печатаем найденную точку
+    for (int j = 0; j < demension; j++)
+      fprintf(pointLog, "%lf ", (*BestX)[j]);
+    fprintf(pointLog, "\n");
 
-  /// Известная точка глобального минимума
-  for (int j = 0; j < demension; j++)
-    fprintf(pointLog, "%lf ", Truemin[j]);
-  fclose(pointLog);*/
-  ////=======================================================================================================================================================
+    /// Известная точка глобального минимума
+    for (int j = 0; j < demension; j++)
+      fprintf(pointLog, "%lf ", Truemin[j]);
+    fclose(pointLog);
+    
+  }
 
   delete[] lower_bounds;
   delete[] upper_bounds;

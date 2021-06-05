@@ -1,7 +1,6 @@
 #include "evolvent.h"
 #include "problem_manager.h"
 #include "extended.h"
-#include "mpi.h"
 #include "omp.h"
 #include <ctime>
 
@@ -64,11 +63,8 @@ public:
   void Heapify(int i);
 };
 
-double Perebor(int maxTrial, int demension, IProblem* problem, double* *bestX);
 void QuickSort(double* mas, int first, int last);
 void QuickSort_D(double* mas, int first, int last, double* z);
 double AGP(int maxTrial, double accuracy, int demension, IProblem* problem);
-double AGP_Space(int maxTrial, double accuracy, int demension, IProblem* problem,
-  double* *BestX, int *iteration, double r, double* Truemin, int flag, char* argv[]);
 double AGP_Space_OMP(int maxTrial, double accuracy, int demension, IProblem* problem,
-  double* *BestX, int *iteration, double r, double* Truemin, int numThr, int flag, char* argv[]);
+  double* *BestX, int *iteration, double r, double* Truemin, int numThr, int flag, char* argv[], bool needDrawing);
