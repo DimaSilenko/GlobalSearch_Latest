@@ -12,7 +12,6 @@
 #include <ctime>
 #include <stdio.h>
 #include <omp.h>
-#include <gtest/gtest.h>
 #include "functions.h"
 
 
